@@ -7,7 +7,7 @@ enum YumiMood { case happy, neutral, encouraging, celebration }
 struct YumiMascot: View {
     var mood: YumiMood = .happy
     var scale: CGFloat = 1
-    private let skin = Color(red: 0.91, green: 0.70, blue: 0.57)
+    private let skin = Color(red: 0.96, green: 0.79, blue: 0.69)
     private let hair = Color(red: 0.12, green: 0.085, blue: 0.09)
     var body: some View {
         ZStack {

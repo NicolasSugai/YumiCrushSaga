@@ -7,7 +7,7 @@ public struct MoveResolution: Sendable {
     public let cascades: Int
     public let reshuffled: Bool
     public let specialsTriggered: Bool
-    public let specialCreated: SpecialKind?
+    public let specialsCreated: [SpecialKind]
 }
 
 public struct Match3Engine {
@@ -44,7 +44,9 @@ public struct Match3Engine {
         guard source.contains(first), source.contains(second), first.isAdjacent(to: second),
               source[first] != nil, source[second] != nil, matches(in: source).isEmpty else { return nil }
         var board = source
-        swap(&board.pieces[first.row][first.column], &board.pieces[second.row][second.column])
+        let firstPiece = board[first]
+        board[first] = board[second]
+        board[second] = firstPiece
         var matched = matches(in: board)
         let specialSwap = source[first]?.special != nil || source[second]?.special != nil
         guard !matched.isEmpty || specialSwap else { return nil }
@@ -53,17 +55,7 @@ public struct Match3Engine {
         var score = 0
         var cascades = 0
         var specialsTriggered = false
-        var pendingSpecial: (Position, SpecialKind)?
-        if !matched.isEmpty {
-            let groups = matchGroups(in: board)
-            if let junction = junctionPosition(in: board) {
-                pendingSpecial = (junction, .forestBurst)
-            } else if let group = groups.max(by: { $0.count < $1.count }), group.count >= 4 {
-                let kind: SpecialKind = group.count >= 5 ? .uruUru : .riverCurrent
-                pendingSpecial = (group.contains(second) ? second : group.contains(first) ? first : group[group.count / 2], kind)
-            }
-        }
-        let specialCreated = pendingSpecial?.1
+        var createdSpecials: [SpecialKind] = []
         while (!matched.isEmpty || (specialSwap && cascades == 0)) && cascades < Self.maximumCascades {
             cascades += 1
             var removal = matched
@@ -72,25 +64,28 @@ public struct Match3Engine {
             } else {
                 removal = expandSpecials(at: removal, board: board)
             }
-            if let (position, kind) = pendingSpecial, cascades == 1 {
+            let preferredPositions = cascades == 1 ? [second, first] : []
+            if let (position, kind) = specialCreation(in: board, matches: matched, preferred: preferredPositions) {
                 removal.remove(position)
                 board[position]?.special = kind
+                createdSpecials.append(kind)
             }
 
+            var waveScore = 0
             for position in removal {
                 guard let piece = board[position] else { continue }
                 if piece.special != nil { specialsTriggered = true }
                 collected[piece.ingredient, default: 0] += 1
-                score += 60 + (piece.special == nil ? 0 : 120)
+                waveScore += 60 + (piece.special == nil ? 0 : 120)
                 board[position] = nil
             }
+            score += waveScore * cascades
             applyGravity(to: &board)
             refill(&board, ingredientCount: ingredientCount)
-            pendingSpecial = nil
             matched = matches(in: board)
         }
         let didReshuffle = reshuffleIfNeeded(&board, ingredientCount: ingredientCount)
-        return MoveResolution(board: board, scoreEarned: score * max(1, cascades), collected: collected, cascades: cascades, reshuffled: didReshuffle, specialsTriggered: specialsTriggered, specialCreated: specialCreated)
+        return MoveResolution(board: board, scoreEarned: score, collected: collected, cascades: cascades, reshuffled: didReshuffle, specialsTriggered: specialsTriggered, specialsCreated: createdSpecials)
     }
 
     @discardableResult
@@ -133,7 +128,9 @@ public struct Match3Engine {
                 guard board[p] != nil, board[q] != nil else { continue }
                 if board[p]?.special != nil || board[q]?.special != nil { return true }
                 var copy = board
-                swap(&copy.pieces[p.row][p.column], &copy.pieces[q.row][q.column])
+                let firstPiece = copy[p]
+                copy[p] = copy[q]
+                copy[q] = firstPiece
                 if !matches(in: copy).isEmpty { return true }
             }
         } }
@@ -165,6 +162,23 @@ public struct Match3Engine {
         return groups
     }
 
+    private func specialCreation(in board: GameBoard, matches: Set<Position>, preferred: [Position]) -> (Position, SpecialKind)? {
+        guard !matches.isEmpty,
+              let group = matchGroups(in: board).max(by: { $0.count < $1.count }),
+              group.count >= 4 else { return nil }
+        let junction = junctionPosition(in: board)
+        let kind: SpecialKind = junction == nil ? (group.count >= 5 ? .uruUru : .riverCurrent) : .forestBurst
+        let available = matches.filter { board[$0]?.special == nil }
+        guard !available.isEmpty else { return nil }
+        if let junction, available.contains(junction) { return (junction, kind) }
+        for position in preferred where available.contains(position) { return (position, kind) }
+        let eligibleGroup = group.filter { available.contains($0) }
+        let ordered = (eligibleGroup.isEmpty ? Array(available) : eligibleGroup).sorted {
+            $0.row == $1.row ? $0.column < $1.column : $0.row < $1.row
+        }
+        return (ordered[ordered.count / 2], kind)
+    }
+
     private func junctionPosition(in board: GameBoard) -> Position? {
         for position in matches(in: board).sorted(by: {
             $0.row == $1.row ? $0.column < $1.column : $0.row < $1.row
@@ -186,7 +200,8 @@ public struct Match3Engine {
     private func expandSpecials(at initial: Set<Position>, board: GameBoard) -> Set<Position> {
         var result = initial
         var queue = Array(initial)
-        while let position = queue.popLast(), let kind = board[position]?.special {
+        while let position = queue.popLast() {
+            guard let kind = board[position]?.special else { continue }
             var affected = Set<Position>()
             switch kind {
             case .riverCurrent: affected = Set((0..<board.columns).map { Position(row: position.row, column: $0) })
@@ -217,6 +232,23 @@ public struct Match3Engine {
         } }
     }
     private mutating func reshuffle(_ board: inout GameBoard, ingredientCount: Int) {
+        let pieces = board.pieces.flatMap { $0.compactMap { $0 } }
+        if pieces.count == board.rows * board.columns && !pieces.isEmpty {
+            for _ in 0..<100 {
+                var shuffled = pieces
+                for index in stride(from: shuffled.count - 1, through: 1, by: -1) {
+                    shuffled.swapAt(index, nextInt(index + 1))
+                }
+                var candidate = GameBoard(rows: board.rows, columns: board.columns)
+                for (index, piece) in shuffled.enumerated() {
+                    candidate[Position(row: index / board.columns, column: index % board.columns)] = piece
+                }
+                if matches(in: candidate).isEmpty && hasLegalMove(candidate) {
+                    board = candidate
+                    return
+                }
+            }
+        }
         for _ in 0..<100 {
             let candidate = makeBoardWithoutReshuffle(rows: board.rows, columns: board.columns, ingredientCount: ingredientCount)
             if hasLegalMove(candidate) && matches(in: candidate).isEmpty { board = candidate; return }

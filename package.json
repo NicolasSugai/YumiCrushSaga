@@ -1,0 +1,16 @@
+{
+  "name": "yumi-crush-saga-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Versão Web progressiva do jogo YumiCrushSaga.",
+  "scripts": {
+    "test": "node tests/web/engine.test.mjs && node tests/web/levels-session-storage.test.mjs",
+    "test:e2e": "playwright test",
+    "build": "node scripts/build-web.mjs",
+    "serve": "node scripts/serve-web.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
+  }
+}

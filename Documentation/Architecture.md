@@ -15,18 +15,18 @@ YumiCrushSaga keeps game rules in the local Swift package YumiEngine. That packa
 - A five-piece run creates an Uru-Uru that clears all pieces of its ingredient.
 - A T/L junction creates an Explosão da Floresta that clears a 3×3 area.
 
-Generated levels rotate between score, ingredient collection and special-piece creation objectives. A collection objective always includes its target ingredient in that level's generated piece palette.
+Generated levels rotate between score, ingredient collection and special-piece creation objectives. A collection objective always includes its target ingredient in that level's generated piece palette. Collection targets grow gradually, with a ceiling informed by the number of moves and the size of the ingredient palette so later levels do not demand the same collection count from a smaller target share.
 
-The engine resolves resulting matches through gravity and refill, with a 32-wave cascade ceiling. New boards are generated without existing matches and are reshuffled when they have no legal move. Randomness is seeded and injectable through the engine initializer.
+The engine resolves resulting matches through gravity and refill, with a 32-wave cascade ceiling. If the ceiling is reached while a match remains, the final board is reshuffled into a stable playable state. New boards are generated without existing matches and are reshuffled when they have no legal move. Randomness is seeded and injectable through the engine initializer.
 
 ## Persistence
 
-Progress is encoded as a versioned JSON value and atomically replaced in the app's Application Support directory. Invalid/corrupt data is ignored during load and protected from overwrite. A successful level advances the unlocked level and records its best score.
+Progress is encoded as a versioned JSON value and atomically replaced in the app's Application Support directory. Invalid/corrupt data is ignored during load and protected from overwrite. Save failures are surfaced in the app instead of being silently discarded. A successful level advances the unlocked level and records its best score.
 
 ## Mascot and artwork
 
-YumiMascot is a replaceable SwiftUI vector cartoon based on the inspected private portrait at Design/References/WhatsApp Image 2026-11-02 at 12.31.04(1).jpeg. The separate concept PNG was used only as a secondary style cue. Both files are ignored by Git and neither is bundled. Eight food pieces have original SpriteKit vector drawings. Yumi's vector art remains a simplified interpretation and should receive a full illustration pass for production polish.
+YumiMascot is a replaceable SwiftUI vector cartoon informed by the private portrait at Design/References/WhatsApp Image 2026-11-02 at 12.31.04(1).jpeg and the separate concept PNG. The face uses a light skin palette, dark wavy hair, and separate expressions for play feedback. Both references are ignored by Git and neither is bundled. Eight food pieces have original SpriteKit vector drawings. Yumi's vector art remains a simplified interpretation; visual comparison in the iOS simulator and a production illustration pass are still needed.
 
 ## Validation boundary
 
-swift test validates the domain package and persistence on a compatible Swift toolchain. Opening/building the app, running XCTest in Xcode, checking VoiceOver and touch behavior, and measuring frame rate require macOS with Xcode and an iPhone-class simulator/device.
+On a compatible Swift toolchain, `swift test` validates the package targets available on that platform. On macOS with Xcode, `xcodebuild test -project YumiCrushSaga.xcodeproj -scheme YumiCrushSaga -destination 'platform=iOS Simulator,name=iPhone 11'` runs the app-hosted XCTest suite; the simulator runtime must be installed. Opening/building the app, checking VoiceOver and touch behavior, and measuring frame rate require macOS with Xcode and an iPhone-class simulator/device. These commands were not executable in the current Linux environment because Swift, Xcode, and iOS simulators are unavailable.

@@ -1,5 +1,10 @@
 node_modules/
 build/
+.build/
+dist/
+.playwright/
+test-results/
+playwright-report/
 .idea/
 .vscode/
 Design/References/

@@ -17,6 +17,12 @@ public protocol ProgressStoring {
     func save(_ progress: PlayerProgress) throws
 }
 
+public enum ProgressStoreError: Error, Equatable {
+    case invalidProgress
+    case corruptExistingSave
+    case writeFailed
+}
+
 public struct LocalProgressStore: ProgressStoring {
     private let fileURL: URL
     public init(fileURL: URL? = nil) {
@@ -31,11 +37,11 @@ public struct LocalProgressStore: ProgressStoring {
         return progress
     }
     public func save(_ progress: PlayerProgress) throws {
-        guard isValid(progress) else { throw CocoaError(.validationMissingMandatoryProperty) }
+        guard isValid(progress) else { throw ProgressStoreError.invalidProgress }
         if FileManager.default.fileExists(atPath: fileURL.path) {
             guard let existingData = try? Data(contentsOf: fileURL),
                   let existing = try? JSONDecoder().decode(PlayerProgress.self, from: existingData),
-                  isValid(existing) else { throw CocoaError(.fileReadCorruptFile) }
+                  isValid(existing) else { throw ProgressStoreError.corruptExistingSave }
         }
         let data = try JSONEncoder().encode(progress)
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)

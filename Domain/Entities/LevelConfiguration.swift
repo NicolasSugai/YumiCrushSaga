@@ -26,10 +26,13 @@ public struct LevelConfiguration: Codable, Hashable, Sendable {
         let region = regions[((level - 1) / 2) % regions.count]
         let ingredientCount = max(min(6, 5 + level / 8), targetIndex + 1)
         if level.isMultiple(of: 5) {
-            return .init(number: level, moves: moves, goal: .specials(2 + min(level / 10, 2)), ingredientCount: ingredientCount, region: region)
+            return .init(number: level, moves: moves, goal: .specials(1 + min(level / 15, 1)), ingredientCount: ingredientCount, region: region)
         }
         if level.isMultiple(of: 2) {
-            return .init(number: level, moves: moves, goal: .collect(targetIngredient, 10 + min(level, 15)), ingredientCount: ingredientCount, region: region)
+            let difficultyTarget = 10 + min((level - 1) / 4, 5)
+            let boardCapacityTarget = max(8, moves * 4 / ingredientCount)
+            let collectionTarget = min(difficultyTarget, boardCapacityTarget)
+            return .init(number: level, moves: moves, goal: .collect(targetIngredient, collectionTarget), ingredientCount: ingredientCount, region: region)
         }
         return .init(number: level, moves: moves, goal: .score(900 + min(level - 1, 6) * 150), ingredientCount: ingredientCount, region: region)
     }

@@ -15,6 +15,7 @@ public final class GameSession: ObservableObject {
     @Published public private(set) var result: GameResult?
     @Published public var selected: Position?
     @Published public private(set) var progress: PlayerProgress
+    @Published public private(set) var persistenceError: String?
     private var engine: Match3Engine
     private let store: ProgressStoring
 
@@ -58,7 +59,7 @@ public final class GameSession: ObservableObject {
         board = resolution.board
         score += resolution.scoreEarned
         for (ingredient, count) in resolution.collected { collected[ingredient, default: 0] += count }
-        if resolution.specialCreated != nil { specialsCreated += 1 }
+        specialsCreated += resolution.specialsCreated.count
         isResolving = false
         checkResult()
     }
@@ -99,7 +100,15 @@ public final class GameSession: ObservableObject {
             persist()
         }
     }
-    private func persist() { try? store.save(progress) }
+    public func dismissPersistenceError() { persistenceError = nil }
+    private func persist() {
+        do {
+            try store.save(progress)
+            persistenceError = nil
+        } catch {
+            persistenceError = "Seu progresso não pôde ser salvo. Verifique o armazenamento do dispositivo e tente novamente."
+        }
+    }
 }
 
 public enum GameResult: Equatable { case victory, defeat }

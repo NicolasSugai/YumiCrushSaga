@@ -25,6 +25,14 @@ struct AppRootView: View {
         .onAppear { GameFeedback.shared.setMusic(session.progress.musicEnabled && scenePhase == .active) }
         .onChange(of: session.progress.musicEnabled) { enabled in GameFeedback.shared.setMusic(enabled && scenePhase == .active) }
         .onChange(of: scenePhase) { phase in GameFeedback.shared.setMusic(session.progress.musicEnabled && phase == .active) }
+        .alert("Progresso não salvo", isPresented: Binding(
+            get: { session.persistenceError != nil },
+            set: { isPresented in if !isPresented { session.dismissPersistenceError() } }
+        )) {
+            Button("OK") { session.dismissPersistenceError() }
+        } message: {
+            Text(session.persistenceError ?? "Tente novamente mais tarde.")
+        }
     }
 }
 

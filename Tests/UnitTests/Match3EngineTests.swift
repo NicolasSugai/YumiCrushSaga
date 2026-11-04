@@ -17,6 +17,17 @@ final class Match3EngineTests: XCTestCase {
         XCTAssertTrue(engine.hasLegalMove(board))
     }
 
+    func testManySeedsProducePlayableMatchFreeBoards() {
+        for seed in 0..<100 {
+            var engine = Match3Engine(seed: UInt64(seed))
+            let board = engine.makeBoard()
+            XCTAssertEqual(board.pieces.count, 8)
+            XCTAssertTrue(board.pieces.allSatisfy { $0.count == 8 && $0.allSatisfy { $0 != nil } }, "Seed \(seed) left a hole")
+            XCTAssertTrue(engine.matches(in: board).isEmpty, "Seed \(seed) generated an automatic match")
+            XCTAssertTrue(engine.hasLegalMove(board), "Seed \(seed) generated a deadlock")
+        }
+    }
+
     func testFindsHorizontalAndVerticalGroups() {
         var board = emptyBoard()
         for column in 1...3 { board[Position(row: 2, column: column)] = piece(.acai) }
@@ -36,8 +47,19 @@ final class Match3EngineTests: XCTestCase {
         var board = emptyBoard()
         let ingredients: [Ingredient] = [.acai, .jambu, .tucupi, .cupuacu, .brazilNut, .tapereba, .bacuri, .cassava]
         for row in 0..<8 { for column in 0..<8 { board[Position(row: row, column: column)] = piece(ingredients[(row * 3 + column * 5) % ingredients.count]) } }
-        let result = Match3Engine(seed: 1).resolveSwap(Position(row: 0, column: 0), Position(row: 0, column: 7), on: board)
+        var engine = Match3Engine(seed: 1)
+        let result = engine.resolveSwap(Position(row: 0, column: 0), Position(row: 0, column: 7), on: board)
         XCTAssertNil(result)
+    }
+
+    func testInvalidAdjacentSwapLeavesInputBoardUnchanged() {
+        var board = emptyBoard()
+        fillPattern(&board)
+        let original = board
+        var engine = Match3Engine(seed: 3)
+        let result = engine.resolveSwap(Position(row: 0, column: 0), Position(row: 0, column: 1), on: board)
+        XCTAssertNil(result)
+        XCTAssertEqual(board, original)
     }
 
     func testSpecialPieceCanBeCreatedByFourMatch() {
@@ -50,7 +72,7 @@ final class Match3EngineTests: XCTestCase {
         board[Position(row: 0, column: 2)] = piece(.acai)
         var engine = Match3Engine(seed: 28)
         let result = engine.resolveSwap(Position(row: 0, column: 2), Position(row: 1, column: 2), on: board)
-        XCTAssertEqual(result?.specialCreated, .riverCurrent)
+        XCTAssertEqual(result?.specialsCreated.first, .riverCurrent)
     }
 
     func testFiveMatchCreatesIngredientClearer() {
@@ -61,7 +83,7 @@ final class Match3EngineTests: XCTestCase {
         board[Position(row: 0, column: 2)] = piece(.acai)
         var engine = Match3Engine(seed: 31)
         let result = engine.resolveSwap(Position(row: 0, column: 2), Position(row: 1, column: 2), on: board)
-        XCTAssertEqual(result?.specialCreated, .uruUru)
+        XCTAssertEqual(result?.specialsCreated.first, .uruUru)
     }
 
     func testTIntersectionCreatesAreaSpecial() {
@@ -75,7 +97,7 @@ final class Match3EngineTests: XCTestCase {
         board[Position(row: 2, column: 5)] = piece(.acai)
         var engine = Match3Engine(seed: 10)
         let result = engine.resolveSwap(Position(row: 2, column: 4), Position(row: 2, column: 5), on: board)
-        XCTAssertEqual(result?.specialCreated, .forestBurst)
+        XCTAssertEqual(result?.specialsCreated.first, .forestBurst)
     }
 
     func testDetectsDeadlockAndAutomaticallyReshuffles() {
@@ -84,9 +106,11 @@ final class Match3EngineTests: XCTestCase {
         var engine = Match3Engine(seed: 112)
         XCTAssertTrue(engine.matches(in: board).isEmpty)
         XCTAssertFalse(engine.hasLegalMove(board))
+        let originalIngredients = ingredientCounts(in: board)
         XCTAssertTrue(engine.reshuffleIfNeeded(&board))
         XCTAssertTrue(engine.matches(in: board).isEmpty)
         XCTAssertTrue(engine.hasLegalMove(board))
+        XCTAssertEqual(ingredientCounts(in: board), originalIngredients)
     }
 
     func testSpecialPieceInteractionTriggersBothPieces() {
@@ -100,6 +124,43 @@ final class Match3EngineTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(result?.collected.values.reduce(0, +) ?? 0, 8)
     }
 
+    func testRiverCurrentClearsItsEntireRowWhenSwapped() {
+        var board = emptyBoard()
+        fillPattern(&board)
+        board[Position(row: 3, column: 2)]?.special = .riverCurrent
+        var engine = Match3Engine(seed: 250)
+
+        let result = engine.resolveSwap(Position(row: 3, column: 2), Position(row: 3, column: 3), on: board)
+
+        XCTAssertTrue(result?.specialsTriggered == true)
+        XCTAssertGreaterThanOrEqual(result?.collected.values.reduce(0, +) ?? 0, 8)
+    }
+
+    func testForestBurstClearsItsThreeByThreeAreaWhenSwapped() {
+        var board = emptyBoard()
+        fillPattern(&board)
+        board[Position(row: 3, column: 3)]?.special = .forestBurst
+        var engine = Match3Engine(seed: 251)
+
+        let result = engine.resolveSwap(Position(row: 3, column: 3), Position(row: 3, column: 4), on: board)
+
+        XCTAssertTrue(result?.specialsTriggered == true)
+        XCTAssertGreaterThanOrEqual(result?.collected.values.reduce(0, +) ?? 0, 9)
+    }
+
+    func testUruUruClearsEveryPieceOfItsIngredientWhenSwapped() {
+        var board = emptyBoard()
+        fillPattern(&board)
+        board[Position(row: 0, column: 0)]?.special = .uruUru
+        let acaiCount = board.pieces.flatMap { $0.compactMap { $0 } }.filter { $0.ingredient == .acai }.count
+        var engine = Match3Engine(seed: 252)
+
+        let result = engine.resolveSwap(Position(row: 0, column: 0), Position(row: 0, column: 1), on: board)
+
+        XCTAssertTrue(result?.specialsTriggered == true)
+        XCTAssertGreaterThanOrEqual(result?.collected[.acai, default: 0] ?? 0, acaiCount)
+    }
+
     func testLevelDifficultyAndGoalAreGenerated() {
         let early = LevelConfiguration.generated(number: 1)
         let later = LevelConfiguration.generated(number: 30)
@@ -109,7 +170,7 @@ final class Match3EngineTests: XCTestCase {
         guard case .specials(let target) = LevelConfiguration.generated(number: 5).goal else {
             return XCTFail("Every fifth level should teach special pieces")
         }
-        XCTAssertEqual(target, 2)
+        XCTAssertEqual(target, 1)
     }
 
     func testEveryGeneratedCollectionGoalIncludesItsIngredient() {
@@ -121,11 +182,70 @@ final class Match3EngineTests: XCTestCase {
         }
     }
 
+    func testGeneratedGoalsStayWithinPlayableBounds() {
+        for number in 1...200 {
+            let level = LevelConfiguration.generated(number: number)
+            XCTAssertTrue((12...25).contains(level.moves), "Level \(number) has an invalid move count")
+            XCTAssertTrue((3...8).contains(level.ingredientCount), "Level \(number) has an invalid palette size")
+            switch level.goal {
+            case .score(let target):
+                XCTAssertTrue((900...1_800).contains(target), "Level \(number) has an unbounded score goal")
+            case .collect(_, let target):
+                XCTAssertTrue((8...15).contains(target), "Level \(number) has an invalid collection goal")
+            case .specials(let target):
+                XCTAssertTrue((1...2).contains(target), "Level \(number) has an excessive special-piece goal")
+            }
+        }
+    }
+
+    func testCollectionGoalsRespectMoveAndIngredientAvailability() {
+        for number in stride(from: 2, through: 200, by: 2) where !number.isMultiple(of: 5) {
+            let level = LevelConfiguration.generated(number: number)
+            guard case .collect(_, let target) = level.goal else { continue }
+            let capacityTarget = max(8, level.moves * 4 / level.ingredientCount)
+            XCTAssertLessThanOrEqual(target, capacityTarget, "Level \(number) has a collection goal too high for its move and palette budget")
+        }
+    }
+
+    func testResolvedBoardsAreFullMatchFreeAndPlayableAcrossManySeeds() {
+        for seed in 0..<100 {
+            var engine = Match3Engine(seed: UInt64(seed))
+            var board = engine.makeBoard()
+            guard let move = firstLegalMove(in: board, engine: engine) else {
+                return XCTFail("Seed \(seed) should have a legal move")
+            }
+            guard let result = engine.resolveSwap(move.0, move.1, on: board) else {
+                return XCTFail("Seed \(seed) should resolve its legal move")
+            }
+            board = result.board
+
+            XCTAssertLessThanOrEqual(result.cascades, Match3Engine.maximumCascades)
+            XCTAssertTrue(board.pieces.allSatisfy { $0.count == board.columns && $0.allSatisfy { $0 != nil } }, "Seed \(seed) left a hole")
+            XCTAssertTrue(engine.matches(in: board).isEmpty, "Seed \(seed) left a match")
+            XCTAssertTrue(engine.hasLegalMove(board), "Seed \(seed) ended in a deadlock")
+        }
+    }
+
     private func emptyBoard() -> GameBoard { GameBoard(rows: 8, columns: 8) }
     private func piece(_ ingredient: Ingredient) -> GamePiece { GamePiece(ingredient: ingredient) }
     private func fillPattern(_ board: inout GameBoard) {
         for row in 0..<8 { for column in 0..<8 {
             board[Position(row: row, column: column)] = piece(Ingredient.allCases[(row + column) % Ingredient.allCases.count])
         } }
+    }
+    private func ingredientCounts(in board: GameBoard) -> [Ingredient: Int] {
+        board.pieces.flatMap { $0.compactMap { $0?.ingredient } }.reduce(into: [:]) { $0[$1, default: 0] += 1 }
+    }
+    private func firstLegalMove(in board: GameBoard, engine: Match3Engine) -> (Position, Position)? {
+        for row in 0..<board.rows {
+            for column in 0..<board.columns {
+                let first = Position(row: row, column: column)
+                for second in [Position(row: row, column: column + 1), Position(row: row + 1, column: column)] where board.contains(second) {
+                    var candidateEngine = engine
+                    if candidateEngine.resolveSwap(first, second, on: board) != nil { return (first, second) }
+                }
+            }
+        }
+        return nil
     }
 }
